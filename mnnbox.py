@@ -105,8 +105,11 @@ class Input(Node):
         if value is not None:
             self.value = value
             if (DEBUG): print("w.r.t {} node of value: {} ".format(self.name, self.value))
-        dim = self.value.shape[0]
-        self.rou = np.eye(dim) * 0.9 + np.ones(dim) * 0.1
+        batch_size = self.value.shape[0]
+        dim = self.value.shape[1]
+        # each entry has a rou
+        rou = np.eye(dim) * 0.9 + np.ones(dim) * 0.1
+        self.rou = np.expand_dims(rou, 0).repeat(batch_size, axis=0)
 
     def backward(self):
         # An Input node has no inputs (the output is the node's value),
@@ -278,15 +281,17 @@ class Combine(Node):
         Performs the math behind a nonlinear transform.
         """
 
-        self.X = self.inbound_nodes[0]  # X.value.shape=(nodes, 2)
+        self.X = self.inbound_nodes[0]  # X.value.shape=(batch_size, nodes, 2)
         self.W = self.inbound_nodes[1]
-        self.rou = self.inbound_nodes[0].rou
+        self.rou = self.inbound_nodes[0].rou # shape = (batch_size, nodes, nodes)
 
-        u = np.dot(self.W.value, self.X.value[:, 0]) * (1 - self.ratio)
-        s = np.sqrt(np.einsum('im,m,in,n,mn->i', self.W.value, self.X.value[:, 1], self.W.value, self.X.value[:, 1],
+        # u and s, shape = (batch_size, nodes)
+        u = np.einsum('ij,kj->ki', self.W.value, self.X.value[:, :, 0]) * (1 - self.ratio)
+        s = np.sqrt(np.einsum('im,km,in,kn,kmn->ki', self.W.value, self.X.value[:, :, 1], self.W.value, self.X.value[:, :, 1],
                               self.rou) * (1 + self.ratio ** 2))
-        self.value = np.stack([u, s], axis=1)
-        self.rou = np.einsum('im,m,jn,n,mn->ij', self.W.value, self.X.value[:, 1], self.W.value, self.X.value[:, 1], self.rou) * (1 + self.ratio ** 2) / np.tensordot(s, s, axes=0)
+        self.value = np.stack([u, s], axis=-1)
+        denominator = np.einsum('ki,kj->kij', s, s)
+        self.rou = np.einsum('im,km,jn,kn,kmn->kij', self.W.value, self.X.value[:, :, 1], self.W.value, self.X.value[:, :, 1], self.rou) * (1 + self.ratio ** 2) / denominator
 
         if True:  print("\n================>Forward pass @ ", self.name)
         if True: print("u_hat:{}".format(u[:5]))
@@ -317,22 +322,25 @@ class Combine(Node):
             if (DEBUG): print('\n')
 
             # Get the gradient for this node from next node and respective operation
-            # (mutliply/add) with each input of this node to set their respective gradients
+            # with each input of this node to set their respective gradients
             # Set the partial of the loss with respect to this node's inputs.
-            grad_u = np.dot(self.W.value.T, grad_cost[:, 0]) * (1 - self.ratio)
-            inv = 1 / (2 * self.value[:, 1])
-            temp = np.einsum('i,ij,ik,jk,k->ij', inv, self.W.value, self.W.value, self.rou, self.X.value[:, 1]) * 2 * (
+
+            # shape = (batch_size, neurons, 2)
+            grad_u = np.einsum('ij,ki->kj', self.W.value, grad_cost[:, :, 0]) * (1 - self.ratio)
+            # grad_u = np.dot(self.W.value.T, grad_cost[:, 0]) * (1 - self.ratio)
+            inv = 1 / (2 * self.value[:, :, 1])
+            temp = np.einsum('bi,ij,ik,bjk,bk->bij', inv, self.W.value, self.W.value, self.X.rou, self.X.value[:, :, 1]) * 2 * (
                     1 + self.ratio ** 2)
-            grad_s = np.dot(temp.T, grad_cost[:, 1])
-            self.gradients[self.X] += np.stack([grad_u, grad_s], axis=1)
+            grad_s = np.einsum('bij,bi->bj', temp, grad_cost[:, :, 1])
+            self.gradients[self.X] += np.stack([grad_u, grad_s], axis=-1)
 
             # Set the partial of the loss with respect to this node's weights.
-            ds_dw = np.einsum('k,ki,i,j,ij->kj', inv, self.W.value, self.X.value[:, 1], self.X.value[:, 1],
-                              self.rou) * 2 * (1 + self.ratio ** 2)
-            grad_u_part_w = np.tensordot(grad_cost[:, 0], self.X.value[:, 0], axes=0)  # dE/du * du/dw
-            grad_s_part_w = np.einsum('i,ij->ij', grad_cost[:, 1], ds_dw)  # dE/ds * ds/dw
-            self.gradients[self.W] += (grad_u_part_w + grad_s_part_w)
-
+            ds_dw = np.einsum('bk,ki,bi,bj,bij->bkj', inv, self.W.value, self.X.value[:, :, 1], self.X.value[:, :, 1],
+                              self.X.rou) * 2 * (1 + self.ratio ** 2)
+            grad_u_part_w = np.einsum('bi,bj->bij', grad_cost[:, :, 0], self.X.value[:, :, 0])  # dE/du * du/dw
+            grad_s_part_w = np.einsum('bi,bij->bij', grad_cost[:, :, 1], ds_dw)  # dE/ds * ds/dw
+            batch_grad_w = grad_u_part_w + grad_s_part_w
+            self.gradients[self.W] += np.sum(batch_grad_w, axis=0)
         if (DEBUG): print('Calculated Final Gradient:\n----------------')
         if (DEBUG): print('W.r.t ', self.X.name, ': \n-------------\n', self.gradients[self.inbound_nodes[0]])
         if (DEBUG): print('W.r.t ', self.W.name, ': \n-------------\n', self.gradients[self.inbound_nodes[1]])
@@ -364,12 +372,14 @@ class MSE(Node):
         if (DEBUG): print("\n----->Forward pass @ ", self.name)
         if (DEBUG): print("Initial value of {} is {}".format(self.name, self.value))
 
-        y_u = self.inbound_nodes[0].value[:, 0]
-        y_s = self.inbound_nodes[0].value[:, 1]
-        a_u = self.inbound_nodes[1].value[:, 0]
-        a_s = self.inbound_nodes[1].value[:, 1]
+        y_u = self.inbound_nodes[0].value[:, :, 0]
+        y_s = self.inbound_nodes[0].value[:, :, 1]
+        a_u = self.inbound_nodes[1].value[:, :, 0]
+        a_s = self.inbound_nodes[1].value[:, :, 1]
 
-        self.m = self.inbound_nodes[0].value.shape[0]
+        batch_size = self.inbound_nodes[0].value.shape[0]
+        num = self.inbound_nodes[0].value.shape[1]
+        self.m = batch_size * num
         # Save the computed output for backward.
         self.diff_u = y_u - a_u
         self.diff_s = y_s - a_s
@@ -398,9 +408,8 @@ class MSE(Node):
         grad_target_u = (-2 / self.m) * self.diff_u
         grad_target_s = (-2 / self.m) * self.diff_s
 
-        self.gradients[self.inbound_nodes[0]] = np.stack([grad_out_u, grad_out_s], axis=1)
-        self.gradients[self.inbound_nodes[1]] = np.stack([grad_target_u, grad_target_s],
-                                                         axis=1)  # for eg. this goes back to Sigmoid
+        self.gradients[self.inbound_nodes[0]] = np.stack([grad_out_u, grad_out_s], axis=-1)
+        self.gradients[self.inbound_nodes[1]] = np.stack([grad_target_u, grad_target_s], axis=-1)
 
         if (DEBUG): print('Calculated Final Gradient:\n----------------')
         if (DEBUG): print('W.r.t ', self.inbound_nodes[0].name, ': \n------------------\n',

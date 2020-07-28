@@ -42,7 +42,7 @@ forward_pass(cost, graph)
 
 
 # test 3
-
+'''
 X = Input('input')
 layer = [X]
 weight = []
@@ -78,15 +78,15 @@ print('\n\n====================Finish====================================')
 plt.figure()
 plt.plot(range(len(total_loss)), total_loss)
 plt.show()
-
+'''
 
 # test gradient
-'''
+
 X = Input()
 W = Variable()
-X_ = np.array([[0.1, 0.1], [0.08, 0.08], [0.07, 0.07]])
+X_ = np.array([[[0.1, 0.1], [0.08, 0.08], [0.07, 0.07]]])
 W_ = np.array([[0.5, 0.5, 0.5]])
-tar_ = np.array([[0.1, 0.1]])
+tar_ = np.array([[[0.1, 0.1]]])
 res = Combine(X, W)
 tar = Input('target')
 cost = MSE(res, tar)
@@ -94,13 +94,12 @@ feed_dict = {X: X_, W: W_, tar: tar_}
 graph = topological_sort(feed_dict)
 forward_and_backward(graph)
 cost_1 = cost.value
-print('the gradient of X:', X.gradients[X])
+print('the gradient of W:', W.gradients[W])
 
-X_[0, 0] = X_[0,0] + 1e-3
+W_[0, 0] = W_[0, 0] + 1e-3
 X.value = X_
 cost_2 = forward_pass(cost, graph)
 grad_check = (cost_2 - cost_1) / (1e-3)
 print('\n=====================\ngradient for check', grad_check)
-'''
 
 
