@@ -43,10 +43,11 @@ forward_pass(cost, graph)
 
 # test 3
 '''
+bs = 4
 X = Input('input')
 layer = [X]
 weight = []
-hidd =5
+hidd =1
 W = [Variable('weight_{}'.format(i)) for i in range(hidd)]
 for i in range(hidd):
     combine = Combine(layer[i], W[i])
@@ -55,46 +56,61 @@ for i in range(hidd):
 target = Input('target')
 cost = MSE(layer[-1], target)
 
-u_input = np.ones(100) * 0.1
-s_input = np.ones(100) * 0.447
-X_ = np.stack([u_input, s_input], axis=1)
+u_input = np.ones((4, 100)) * 0.1
+s_input = np.ones((4,100)) * 0.447
+X_ = np.stack([u_input, s_input], axis=-1)
 W_ = np.ones((100, 100)) * 0.5
-target_ = np.stack([u_input, s_input], axis=1)
+target_ = np.stack([u_input, s_input], axis=-1)
 feed_dict = {X: X_, target: target_}
 for i in range(hidd):
     feed_dict[W[i]] = W_
 graph = topological_sort(feed_dict)
 
 train_ables = W
+forward_and_backward(graph)
+loss = graph[-1].value
+grad_w0 = W[0].gradients[W[0]][1, 1]
+print('-------->', grad_w0)
 
-total_loss = []
-for i in range(20):
-    forward_and_backward(graph)
-    sgd_update(train_ables)
-    loss = graph[-1].value
-    total_loss.append(loss)
+W__ = W_
+W__[1, 1] = W_[1, 1] + 0.001
+W[0].value = W__
+loss_ = forward_pass(cost, graph)
+grad_w0_ = (loss_ - loss) / 0.001
+print('\n\n------->', grad_w0_)
 
-print('\n\n====================Finish====================================')
-plt.figure()
-plt.plot(range(len(total_loss)), total_loss)
-plt.show()
+
+# total_loss = []
+# for i in range(20):
+#     forward_and_backward(graph)
+#     sgd_update(train_ables)
+#     loss = graph[-1].value
+#     total_loss.append(loss)
+#
+# print('\n\n====================Finish====================================')
+# plt.figure()
+# plt.plot(range(len(total_loss)), total_loss)
+# plt.show()
 '''
 
 # test gradient
 
 X = Input()
 W = Variable()
-X_ = np.array([[[0.1, 0.1], [0.08, 0.08], [0.07, 0.07]]])
-W_ = np.array([[0.5, 0.5, 0.5]])
-tar_ = np.array([[[0.1, 0.1]]])
-res = Combine(X, W)
+u_input = np.ones((4, 100)) * 0.1
+s_input = np.ones((4,100)) * 0.447
+X_ = np.stack([u_input, s_input], axis=-1)
+W_ = np.ones((100, 100)) * 0.5
+target_ = np.stack([u_input, s_input], axis=-1)
+com = Combine(X, W)
 tar = Input('target')
+res = Activate(com)
 cost = MSE(res, tar)
-feed_dict = {X: X_, W: W_, tar: tar_}
+feed_dict = {X: X_, W: W_, tar: target_}
 graph = topological_sort(feed_dict)
 forward_and_backward(graph)
 cost_1 = cost.value
-print('the gradient of W:', W.gradients[W])
+print('the gradient of W:', W.gradients[W][0, 0])
 
 W_[0, 0] = W_[0, 0] + 1e-3
 X.value = X_

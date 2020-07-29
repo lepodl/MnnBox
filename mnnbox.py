@@ -294,8 +294,8 @@ class Combine(Node):
         self.rou = np.einsum('im,km,jn,kn,kmn->kij', self.W.value, self.X.value[:, :, 1], self.W.value, self.X.value[:, :, 1], self.rou) * (1 + self.ratio ** 2) / denominator
 
         if True:  print("\n================>Forward pass @ ", self.name)
-        if True: print("u_hat:{}".format(u[:5]))
-        if True: print("s_hat:{}".format(s[:5]))
+        if True: print("u_hat:{}".format(u[1, :5]))
+        if True: print("s_hat:{}".format(s[1, :5]))
 
     def backward(self):
         """
@@ -337,7 +337,7 @@ class Combine(Node):
             # Set the partial of the loss with respect to this node's weights.
             ds_dw = np.einsum('bk,ki,bi,bj,bij->bkj', inv, self.W.value, self.X.value[:, :, 1], self.X.value[:, :, 1],
                               self.X.rou) * 2 * (1 + self.ratio ** 2)
-            grad_u_part_w = np.einsum('bi,bj->bij', grad_cost[:, :, 0], self.X.value[:, :, 0])  # dE/du * du/dw
+            grad_u_part_w = np.einsum('bi,bj->bij', grad_cost[:, :, 0], self.X.value[:, :, 0]) * (1 - self.ratio)  # dE/du * du/dw
             grad_s_part_w = np.einsum('bi,bij->bij', grad_cost[:, :, 1], ds_dw)  # dE/ds * ds/dw
             batch_grad_w = grad_u_part_w + grad_s_part_w
             self.gradients[self.W] += np.sum(batch_grad_w, axis=0)
@@ -448,16 +448,16 @@ class Activate(Node):
     def forward(self):
         self.X = self.inbound_nodes[0]  # X.value.shape=(nodes, 2)
         self.rou = self.X.rou
-        self.u_hat, self.s_hat = self.X.value[:, 0], self.X.value[:, 1]
+        self.u_hat, self.s_hat = self.X.value[:, :, 0], self.X.value[:, :, 1]
         func = Fun()
         u = func.s_1(self.u_hat, self.s_hat)
         cv = func.s_2(self.u_hat, self.s_hat)
         s = cv * np.sqrt(u)
-        self.value = np.stack([u, s], axis=1)
+        self.value = np.stack([u, s], axis=-1)
 
         if True:  print("\n================>Forward pass @ ", self.name)
-        if True: print("u:{}".format(u[:5]))
-        if True: print("s:{}".format(s[:5]))
+        if True: print("u:{}".format(u[1, :5]))
+        if True: print("s:{}".format(s[1, :5]))
 
     def backward(self):
         self.gradients = {n: np.zeros_like(n.value) for n in self.inbound_nodes}
@@ -482,7 +482,7 @@ class Activate(Node):
             # (mutliply/add) with each input of this node to set their respective gradients
             # Set the partial of the loss with respect to this node's inputs.
 
-            u, s = self.value[:, 0], self.value[:, 1]
+            u, s = self.value[:, :, 0], self.value[:, :, 1]
             s_3 = s / (u ** (3 / 2))
             i_1 = (self.v_r * self.L - self.u_hat) / (self.s_hat * np.sqrt(self.L))
             i_2 = (self.v_th * self.L - self.u_hat) / (self.s_hat * np.sqrt(self.L))
@@ -493,12 +493,14 @@ class Activate(Node):
             ds_ds = -4 * (i_2 * dbl_dawson(i_2) - i_1 * dbl_dawson(i_1)) * u ** (3 / 2) / (
                         s_3 * self.L ** 2 * self.s_hat) + 3 * s_3 * np.sqrt(u) * du_ds / 2
 
-            grad_u = grad_cost[:, 0] * du_du + grad_cost[:, 1] * ds_du
-            grad_s = grad_cost[:, 0] * du_ds + grad_cost[:, 1] * ds_ds
-            self.gradients[self.X] += np.stack([grad_u, grad_s], axis=1)
+            grad_u = grad_cost[:, :, 0] * du_du + grad_cost[:, :, 1] * ds_du
+            grad_s = grad_cost[:, :, 0] * du_ds + grad_cost[:, :, 1] * ds_ds
+            self.gradients[self.X] += np.stack([grad_u, grad_s], axis=-1)
 
         if (DEBUG): print('Calculated Final Gradient:\n----------------')
         if (DEBUG): print('W.r.t ', self.X.name, ': \n-------------\n', self.gradients[self.inbound_nodes[0]])
+
+
 
 
 

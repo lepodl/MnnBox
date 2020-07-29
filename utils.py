@@ -10,18 +10,20 @@ import pickle
 
 def dawson(u):
     assert isinstance(u, np.ndarray)
-    assert u.ndim == 1
+    # assert u.ndim == 1
     return (np.sqrt(pi) / 2) * erfcx(-u)
 
 
 def dbl_dawson(x):
     assert isinstance(x, np.ndarray)
-    assert x.ndim == 1
+    # assert x.ndim == 1
     length = x.size
+    shape = x.shape
+    x_flatten = x.flatten()
     res = np.empty([length], dtype=np.float)
     for i in range(length):
-        res[i] = pi / 4 * quad(lambda u: np.exp(x[i]**2 - u**2) * erfcx(-u) ** 2, - np.inf, x[i])[0]
-    return res
+        res[i] = pi / 4 * quad(lambda u: np.exp(x_flatten[i]**2 - u**2) * erfcx(-u) ** 2, - np.inf, x_flatten[i])[0]
+    return res.reshape(shape)
 
 
 def d_(x):

@@ -15,8 +15,13 @@ import numpy as np
 # print(s_w, '\n')
 # print(res)
 
-dim =2
-batch_size = 4
-rou = np.eye(dim) * 0.9 + np.ones(dim) * 0.1
-rou = np.expand_dims(rou, 0).repeat(batch_size, axis=0)
-print(rou)
+# dim =2
+# batch_size = 4
+# rou = np.eye(dim) * 0.9 + np.ones(dim) * 0.1
+# rou = np.expand_dims(rou, 0).repeat(batch_size, axis=0)
+# print(rou)
+
+x = np.arange(16).reshape((2,4,2))
+print(x)
+y = x.flatten()
+print(y)
