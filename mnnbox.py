@@ -503,7 +503,6 @@ class Activate(Node):
 
 
 
-
 def sgd_update(trainables, learning_rate=1e-2):
     """
     Updates the value of each trainable with SGD.
@@ -523,3 +522,56 @@ def sgd_update(trainables, learning_rate=1e-2):
         partial = t.gradients[t]
         t.value -= learning_rate * partial
 
+
+class BatchNormalization(Node):
+    '''
+    implement batch normalization
+    '''
+    def __init__(self, train, X, gamma, beta):
+        # X.shape=(bs, neurons, 2)
+        Node.__init__(self, [X, gamma, beta])
+        self.name = 'bn'
+        self.train = train
+
+    def forward(self):
+        if self.train:
+            # output = x_nb; shape=(bs, neurons, 2)
+            dim = self.inbound_nodes[0].value.shape[1]
+            self.epsilon = np.ones(dim) * 0.0001
+            self.u , self.s = self.inbound_nodes[0].value[:, :, 0], self.inbound_nodes[0].value[:, :, 1]
+            # gamma.shape=(2), beta.shape=(dim, 2)
+            self.gamma, self.beta = self.inbound_nodes[1].value, self.inbound_nodes[2].value
+            self.u_mean, self.u_variance = np.mean(self.u, axis=0), np.var(self.u, axis=0)
+            self.s_mean, self.s_variance = np.mean(self.s, axis=0), np.var(self.s, axis=0)
+            self.u_hat = (self.u - self.u_mean) /np.sqrt(self.u_variance + self.epsilon)
+            self.s_hat = (self.s - self.s_mean) /np.sqrt(self.s_variance + self.epsilon)
+            self.u_output = self.u_hat * self.gamma[0] + self.beta[:, 0]
+            self.s_output = self.s_hat * self.gamma[1] + self.beta[:, 1]
+            self.value = np.stack([self.u_hat, self.s_hat], axis=-1)
+
+        else:
+            pass
+
+    @staticmethod
+    def grad_us(gamma, grad, x, mean, variance, epsilon ):
+        m = x.shape[0]
+        diff = x - mean
+        dl_dx_hat = grad * gamma
+        dl_sigma_square = np.einsum('bi,bi,i->i', dl_dx_hat, diff, (-1 /2 * (variance + epsilon) ** (- 3 / 2)))
+        dl_mean = np.einsum('bi,i->i', dl_dx_hat, (-1 / np.sqrt(variance + epsilon))) -2 * dl_sigma_square * np.average(diff, axis=0)
+        grad = np.einsum('bi,i->bi', dl_dx_hat, (1 / np.sqrt(variance + epsilon))) + np.einsum('i,bi->bi', dl_sigma_square, (2 / m * diff)) + dl_mean / m
+        return grad
+
+    def backward(self):
+        self.gradients = {n: np.zeros_like(n.value) for n in self.inbound_nodes}
+        for n in self.outbound_nodes:
+            grad_cost = n.gradients[self]  # shape = self.value.shape = (batch_size, this layer neurons, 2)
+            dl_gamma = np.array([np.einsum('bi,i->', grad_cost[:, :, 0], self.u_hat), np.einsum('bi,i->', grad_cost[:, :, 1], self.s_hat)])
+            dl_beta = np.stack([np.sum(grad_cost[:, :, 0], axis=0), np.sum(grad_cost[:, :, 1], axis=0)], axis=-1)
+
+            grad_u = BatchNormalization.grad_us(self.gamma, grad_cost[:, :, 0], self.u, self.u_mean, self.u_variance, self.epsilon)
+            grad_s = BatchNormalization.grad_us(self.gamma, grad_cost[:, :, 1], self.s, self.s_mean, self.s_variance, self.epsilon)
+
+            self.gradients[self.inbound_nodes[0]] += np.stack([grad_u, grad_s], axis=-1)
+            self.gradients[self.inbound_nodes[1]] += dl_gamma
+            self.gradients[self.inbound_nodes[2]] += dl_beta

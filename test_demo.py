@@ -42,15 +42,18 @@ forward_pass(cost, graph)
 
 
 # test 3
-'''
+
 bs = 4
 X = Input('input')
 layer = [X]
 weight = []
-hidd =1
+hidd =2
 W = [Variable('weight_{}'.format(i)) for i in range(hidd)]
+Gamma = [Variable('gamma_{}'.format(i)) for i in range(hidd)]
+Beta = [Variable('beta_{}'.format(i)) for i in range(hidd)]
 for i in range(hidd):
     combine = Combine(layer[i], W[i])
+    bn = BatchNormalization(1, combine, Gamma[i], Beta[i])
     activate = Activate(combine)
     layer.append(activate)
 target = Input('target')
@@ -60,41 +63,45 @@ u_input = np.ones((4, 100)) * 0.1
 s_input = np.ones((4,100)) * 0.447
 X_ = np.stack([u_input, s_input], axis=-1)
 W_ = np.ones((100, 100)) * 0.5
+gamma_ = np.array([0.5, 0.5])
+beta_ = np.ones((100, 2)) * 2.
 target_ = np.stack([u_input, s_input], axis=-1)
 feed_dict = {X: X_, target: target_}
 for i in range(hidd):
     feed_dict[W[i]] = W_
+    feed_dict[Gamma[i]] = gamma_
+    feed_dict[Beta[i]] = beta_
 graph = topological_sort(feed_dict)
 
-train_ables = W
-forward_and_backward(graph)
-loss = graph[-1].value
-grad_w0 = W[0].gradients[W[0]][1, 1]
-print('-------->', grad_w0)
-
-W__ = W_
-W__[1, 1] = W_[1, 1] + 0.001
-W[0].value = W__
-loss_ = forward_pass(cost, graph)
-grad_w0_ = (loss_ - loss) / 0.001
-print('\n\n------->', grad_w0_)
-
-
-# total_loss = []
-# for i in range(20):
-#     forward_and_backward(graph)
-#     sgd_update(train_ables)
-#     loss = graph[-1].value
-#     total_loss.append(loss)
+train_ables = W + Gamma + Beta
+# forward_and_backward(graph)
+# loss = graph[-1].value
+# grad_w0 = W[0].gradients[W[0]][1, 1]
+# print('-------->', grad_w0)
 #
-# print('\n\n====================Finish====================================')
-# plt.figure()
-# plt.plot(range(len(total_loss)), total_loss)
-# plt.show()
-'''
+# W__ = W_
+# W__[1, 1] = W_[1, 1] + 0.001
+# W[0].value = W__
+# loss_ = forward_pass(cost, graph)
+# grad_w0_ = (loss_ - loss) / 0.001
+# print('\n\n------->', grad_w0_)
+
+
+total_loss = []
+for i in range(10):
+    forward_and_backward(graph)
+    sgd_update(train_ables)
+    loss = graph[-1].value
+    total_loss.append(loss)
+
+print('\n\n====================Finish====================================')
+plt.figure()
+plt.plot(range(len(total_loss)), total_loss)
+plt.show()
+
 
 # test gradient
-
+'''
 X = Input()
 W = Variable()
 u_input = np.ones((4, 100)) * 0.1
@@ -117,5 +124,5 @@ X.value = X_
 cost_2 = forward_pass(cost, graph)
 grad_check = (cost_2 - cost_1) / (1e-3)
 print('\n=====================\ngradient for check', grad_check)
-
+'''
 

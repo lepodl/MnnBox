@@ -21,7 +21,12 @@ import numpy as np
 # rou = np.expand_dims(rou, 0).repeat(batch_size, axis=0)
 # print(rou)
 
-x = np.arange(16).reshape((2,4,2))
-print(x)
-y = x.flatten()
-print(y)
+# x = np.arange(16).reshape((2,4,2))
+# print(x)
+# y = x.flatten()
+# print(y)
+
+x = np.ones((3,3))
+y = np.arange(3)
+z = np.einsum('bi,i->', x, y)
+print(z)
