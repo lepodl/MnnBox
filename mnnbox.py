@@ -532,17 +532,28 @@ class BatchNormalization(Node):
         Node.__init__(self, [X, gamma, beta])
         self.name = 'bn'
         self.train = train
+        self.num = 0
+        self.u_mean_all = []
+        self.s_mean_all = []
+        self.u_variance_all = []
+        self.s_variance_all = []
 
     def forward(self):
+        self.num += 1
         if self.train:
-            # output = x_nb; shape=(bs, neurons, 2)
             dim = self.inbound_nodes[0].value.shape[1]
             self.epsilon = np.ones(dim) * 0.0001
+            # output = x_nb; shape=(bs, neurons, 2)
             self.u , self.s = self.inbound_nodes[0].value[:, :, 0], self.inbound_nodes[0].value[:, :, 1]
             # gamma.shape=(2), beta.shape=(dim, 2)
             self.gamma, self.beta = self.inbound_nodes[1].value, self.inbound_nodes[2].value
             self.u_mean, self.u_variance = np.mean(self.u, axis=0), np.var(self.u, axis=0)
             self.s_mean, self.s_variance = np.mean(self.s, axis=0), np.var(self.s, axis=0)
+            if self.num >= 1000:
+                self.u_mean_all.append(self.u_mean)
+                self.s_mean_all.append(self.s_mean)
+                self.u_variance_all.append(self.u_variance)
+                self.s_variance_all.append(self.s_variance)
             self.u_hat = (self.u - self.u_mean) /np.sqrt(self.u_variance + self.epsilon)
             self.s_hat = (self.s - self.s_mean) /np.sqrt(self.s_variance + self.epsilon)
             self.u_output = self.u_hat * self.gamma[0] + self.beta[:, 0]
@@ -550,7 +561,17 @@ class BatchNormalization(Node):
             self.value = np.stack([self.u_output, self.s_output], axis=-1)
 
         else:
-            pass
+            self.u, self.s = self.inbound_nodes[0].value[:, :, 0], self.inbound_nodes[0].value[:, :, 1]
+            # gamma.shape=(2), beta.shape=(dim, 2)
+            self.gamma, self.beta = self.inbound_nodes[1].value, self.inbound_nodes[2].value
+            length = len(self.u_mean_all)
+            u_mean = np.mean(np.array(self.u_mean_all), axis=0)
+            s_mean = np.mean(np.array(self.s_mean_all), axis=0)
+            u_variance = np.mean(np.array(self.u_variance_all) ** 2, axis=0) * length / (length -1)
+            s_variance = np.mean(np.array(self.s_variance_all) ** 2, axis=0) * length / (length -1)
+            u_output = self.u / np.sqrt(u_variance + self.epsilon) * self.gamma[0] + self.beta[:, 0] - (self.gamma[0] *  u_mean / np.sqrt(u_variance + self.epsilon))
+            s_output = self.u / np.sqrt(s_variance + self.epsilon) * self.gamma[1] + self.beta[:, 1] - (self.gamma[1] *  s_mean / np.sqrt(s_variance + self.epsilon))
+            self.value = np.stack([self.u_output, self.s_output], axis=-1)
 
     @staticmethod
     def grad_us(gamma, grad, x, mean, variance, epsilon ):
