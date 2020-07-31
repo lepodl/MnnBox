@@ -484,11 +484,11 @@ class Activate(Node):
 
             u, s = self.value[:, :, 0], self.value[:, :, 1]
             s_3 = s / (u ** (3 / 2))
-            i_1 = (self.v_r * self.L - self.u_hat) / (self.s_hat * np.sqrt(self.L))
-            i_2 = (self.v_th * self.L - self.u_hat) / (self.s_hat * np.sqrt(self.L))
-            du_du = (2 * u ** 2) * (dawson(i_2) - dawson(i_1)) / (self.s_hat * self.L ** (3 / 2))
+            i_1 = (self.v_r * self.L - self.u_hat) / self.s_hat
+            i_2 = (self.v_th * self.L - self.u_hat) / self.s_hat
+            du_du = (2 * u ** 2) * (dawson(i_2) - dawson(i_1)) / (self.s_hat * self.L)
             du_ds = (2 * u ** 2) * (i_2 * dawson(i_2) - i_1 * dawson(i_1)) / (self.s_hat * self.L)
-            ds_du = (-2 / (s_3 * self.s_hat * self.L ** (3 / 2))) * (dbl_dawson(i_2) - dbl_dawson(i_1)) * u ** (
+            ds_du = (-4 / (s_3 * self.s_hat * self.L ** 2)) * (dbl_dawson(i_2) - dbl_dawson(i_1)) * u ** (
                         3 / 2) + 3 * s_3 * np.sqrt(u) * du_du / 2
             ds_ds = -4 * (i_2 * dbl_dawson(i_2) - i_1 * dbl_dawson(i_1)) * u ** (3 / 2) / (
                         s_3 * self.L ** 2 * self.s_hat) + 3 * s_3 * np.sqrt(u) * du_ds / 2
@@ -547,7 +547,7 @@ class BatchNormalization(Node):
             self.s_hat = (self.s - self.s_mean) /np.sqrt(self.s_variance + self.epsilon)
             self.u_output = self.u_hat * self.gamma[0] + self.beta[:, 0]
             self.s_output = self.s_hat * self.gamma[1] + self.beta[:, 1]
-            self.value = np.stack([self.u_hat, self.s_hat], axis=-1)
+            self.value = np.stack([self.u_output, self.s_output], axis=-1)
 
         else:
             pass
@@ -566,11 +566,11 @@ class BatchNormalization(Node):
         self.gradients = {n: np.zeros_like(n.value) for n in self.inbound_nodes}
         for n in self.outbound_nodes:
             grad_cost = n.gradients[self]  # shape = self.value.shape = (batch_size, this layer neurons, 2)
-            dl_gamma = np.array([np.einsum('bi,i->', grad_cost[:, :, 0], self.u_hat), np.einsum('bi,i->', grad_cost[:, :, 1], self.s_hat)])
+            dl_gamma = np.array([np.einsum('bi,bi->', grad_cost[:, :, 0], self.u_hat), np.einsum('bi,bi->', grad_cost[:, :, 1], self.s_hat)])
             dl_beta = np.stack([np.sum(grad_cost[:, :, 0], axis=0), np.sum(grad_cost[:, :, 1], axis=0)], axis=-1)
 
-            grad_u = BatchNormalization.grad_us(self.gamma, grad_cost[:, :, 0], self.u, self.u_mean, self.u_variance, self.epsilon)
-            grad_s = BatchNormalization.grad_us(self.gamma, grad_cost[:, :, 1], self.s, self.s_mean, self.s_variance, self.epsilon)
+            grad_u = BatchNormalization.grad_us(self.gamma[0], grad_cost[:, :, 0], self.u, self.u_mean, self.u_variance, self.epsilon)
+            grad_s = BatchNormalization.grad_us(self.gamma[1], grad_cost[:, :, 1], self.s, self.s_mean, self.s_variance, self.epsilon)
 
             self.gradients[self.inbound_nodes[0]] += np.stack([grad_u, grad_s], axis=-1)
             self.gradients[self.inbound_nodes[1]] += dl_gamma

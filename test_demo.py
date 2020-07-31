@@ -1,5 +1,6 @@
 from mnnbox import *
 import matplotlib.pyplot as plt
+import unittest
 
 # test 1
 '''
@@ -42,7 +43,7 @@ forward_pass(cost, graph)
 
 
 # test 3
-
+'''
 bs = 4
 X = Input('input')
 layer = [X]
@@ -98,31 +99,69 @@ print('\n\n====================Finish====================================')
 plt.figure()
 plt.plot(range(len(total_loss)), total_loss)
 plt.show()
-
-
-# test gradient
 '''
-X = Input()
-W = Variable()
-u_input = np.ones((4, 100)) * 0.1
-s_input = np.ones((4,100)) * 0.447
-X_ = np.stack([u_input, s_input], axis=-1)
-W_ = np.ones((100, 100)) * 0.5
-target_ = np.stack([u_input, s_input], axis=-1)
-com = Combine(X, W)
-tar = Input('target')
-res = Activate(com)
-cost = MSE(res, tar)
-feed_dict = {X: X_, W: W_, tar: target_}
-graph = topological_sort(feed_dict)
-forward_and_backward(graph)
-cost_1 = cost.value
-print('the gradient of W:', W.gradients[W][0, 0])
 
-W_[0, 0] = W_[0, 0] + 1e-3
-X.value = X_
-cost_2 = forward_pass(cost, graph)
-grad_check = (cost_2 - cost_1) / (1e-3)
-print('\n=====================\ngradient for check', grad_check)
-'''
+class Test_MnnBox(unittest.TestCase):
+    def _test_gradient_bn(self):
+        x = Input()
+        gamma = Variable('gamma')
+        beta = Variable('beta')
+        target = Input('target')
+        u_input = np.random.uniform(size=(4, 100))
+        s_input = np.random.uniform(size=(4, 100))
+        x_ = np.stack([u_input, s_input], axis=-1)
+        gamma_ = np.array([0.5, 0.5])
+        beta_ = np.ones((100, 2)) * 2.
+        target_ = np.stack([u_input, s_input], axis=-1)
+        feed_dict = {x: x_, gamma: gamma_, beta: beta_, target: target_}
+        out = BatchNormalization(1, x, gamma, beta)
+        cost = MSE(out, target)
+        graph = topological_sort(feed_dict)
+        forward_and_backward(graph)
+        loss = cost.value
+        # print('\n---------------->the gradient of x\n', out.gradients[x][1, 1, 0])
+        # print('\n---------------->the gradient of gamma\n', gamma.gradients[gamma][1])
+        print('\n---------------->the gradient of beta\n', beta.gradients[beta][1, 0])
+
+        # x_[1, 1, 0] = x_[1, 1, 0] + 0.0001
+        # x.value = x_
+        # gamma_[1] = gamma_[1] + 0.0001
+        # gamma.value = gamma_
+        beta_[1, 0] = beta_[1, 0] + 0.0001
+        loss_ = forward_pass(cost, graph)
+        grad = (loss_ - loss) / 0.0001
+        # print('\n---------------->validate the gradient of x\n', grad)
+        # print('\n---------------->validate the gradient of gamma\n', grad)
+        print('\n---------------->validate the gradient of beta\n', grad)
+
+    def test_gradient_of_act(self):
+        X = Input()
+        W = Variable()
+        u_input = np.ones((4, 100)) * 2.3
+        s_input = np.ones((4, 100)) * 1.
+        X_ = np.stack([u_input, s_input], axis=-1)
+        u_output = np.ones((4, 100)) * 0.1
+        s_output = np.ones((4, 100)) * 0.44
+        target_ = np.stack([u_output, s_output], axis=-1)
+        tar = Input('target')
+        res = Activate(X)
+        cost = MSE(res, tar)
+        feed_dict = {X: X_, tar: target_}
+        graph = topological_sort(feed_dict)
+        forward_and_backward(graph)
+        cost_1 = cost.value
+        print('the gradient of X:', X.gradients[X][0, 0, 0])
+
+        X_[0, 0, 0] = X_[0, 0, 0] + 1e-3
+        X.value = X_
+        cost_2 = forward_pass(cost, graph)
+        grad_check = (cost_2 - cost_1) / (1e-3)
+        print('\n=====================\ngradient for check', grad_check)
+
+
+
+if __name__ == '__main__':
+    unittest.main()
+
+
 

@@ -48,8 +48,8 @@ class Fun:
         assert isinstance(z, np.ndarray)
         assert y.ndim == z.ndim
         length = y.size
-        i_1 = ((self.v_r * self.L - y) / (z * np.sqrt(self.L))).flatten()
-        i_2 = ((self.v_th * self.L - y) / (z * np.sqrt(self.L))).flatten()
+        i_1 = ((self.v_r * self.L - y) / z).flatten()
+        i_2 = ((self.v_th * self.L - y) / z).flatten()
         # print("Integral up_down\t", i_1[0], i_2[0])
 
         res = np.empty([length], dtype=np.float)
@@ -64,12 +64,12 @@ class Fun:
         # start = time.time()
         assert self.mu is not None
         length = y.size
-        i_1 = ((self.v_r * self.L - y) / (z * np.sqrt(self.L))).flatten()
-        i_2 = ((self.v_th * self.L - y) / (z * np.sqrt(self.L))).flatten()
+        i_1 = ((self.v_r * self.L - y) / z).flatten()
+        i_2 = ((self.v_th * self.L - y) / z).flatten()
 
         res = np.empty([length], dtype=np.float)
         for j in range(length):
-            temp_local = np.sqrt(((4 / self.L ** 2) * quad(dbl_d, i_1[j], i_2[j])[0]))
+            temp_local = np.sqrt(((8 / self.L ** 2) * quad(dbl_d, i_1[j], i_2[j])[0]))
             res[j] = temp_local * self.mu[j]
         self.mu = None
         # print("Integral(s) takes time:\t", time.time() - start)
