@@ -292,10 +292,10 @@ class Combine(Node):
         self.value = np.stack([u, s], axis=-1)
         denominator = np.einsum('ki,kj->kij', s, s)
         self.rou = np.einsum('im,km,jn,kn,kmn->kij', self.W.value, self.X.value[:, :, 1], self.W.value, self.X.value[:, :, 1], self.rou) * (1 + self.ratio ** 2) / denominator
-
-        if True:  print("\n================>Forward pass @ ", self.name)
-        if True: print("u_hat:{}".format(u[1, :5]))
-        if True: print("s_hat:{}".format(s[1, :5]))
+        #
+        # if True:  print("\n================>Forward pass @ ", self.name)
+        # if True: print("u_hat:{}".format(u[1, :5]))
+        # if True: print("s_hat:{}".format(s[1, :5]))
 
     def backward(self):
         """
@@ -455,9 +455,9 @@ class Activate(Node):
         s = cv * np.sqrt(u)
         self.value = np.stack([u, s], axis=-1)
 
-        if True:  print("\n================>Forward pass @ ", self.name)
-        if True: print("u:{}".format(u[1, :5]))
-        if True: print("s:{}".format(s[1, :5]))
+        # if True:  print("\n================>Forward pass @ ", self.name)
+        # if True: print("u:{}".format(u[1, :5]))
+        # if True: print("s:{}".format(s[1, :5]))
 
     def backward(self):
         self.gradients = {n: np.zeros_like(n.value) for n in self.inbound_nodes}
@@ -560,9 +560,9 @@ class BatchNormalization(Node):
             self.u_output = self.u_hat * self.gamma[0] + self.beta[:, 0]
             self.s_output = self.s_hat * self.gamma[1] + self.beta[:, 1]
             self.value = np.stack([self.u_output, self.s_output], axis=-1)
-            if True:  print("\n================>Forward pass @ ", self.name)
-            if True: print("u:{}".format(self.u_output[1, :5]))
-            if True: print("s:{}".format(self.s_output[1, :5]))
+            # if True:  print("\n================>Forward pass @ ", self.name)
+            # if True: print("u:{}".format(self.u_output[1, :5]))
+            # if True: print("s:{}".format(self.s_output[1, :5]))
 
 
         else:
