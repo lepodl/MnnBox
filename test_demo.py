@@ -1,45 +1,8 @@
 from mnnbox import *
 import matplotlib.pyplot as plt
 import unittest
+import os
 
-# test 1
-'''
-X, W = Input('X'), Input('W')
-t = Input('target')
-
-f = Combine(X, W)
-cost = MSE(f, t)
-
-X_ = np.array([[1., 2.], [3., 4.]])
-W_ = np.array([[1., 1.], [1, 2]])
-t_ = np.array([[1., 2.], [3., 4.]])
-
-
-
-
-feed_dict = {X: X_, W: W_, t: t_}
-
-graph = topological_sort(feed_dict)
-forward_and_backward(graph)
-gradients = [l.gradients[l] for l in [X, t, W]]
-
-print('\n\n', gradients)
-'''
-
-# test 2
-'''
-y, a = Input('y'), Input('a')
-cost = MSE(y, a)
-
-y_ = np.array([[1, 4, 9], [1, 2, 3]])
-a_ = np.array([[4.5, 5, 10], [2, 3, 1]])
-
-feed_dict = {y: y_, a: a_}
-graph = topological_sort(feed_dict)
-# forward pass
-# forward_pass_mse(graph)
-forward_pass(cost, graph)
-'''
 
 class Test_MnnBox(unittest.TestCase):
     def _test_gradient_bn(self):
@@ -98,63 +61,74 @@ class Test_MnnBox(unittest.TestCase):
         grad_check = (cost_2 - cost_1) / (1e-3)
         print('\n=====================\ngradient for check', grad_check)
 
-
     def test_whole_nn(self):
-        bs = 4
+        neurons = 10
+        bs = 9
         X = Input('input')
         layer = [X]
         weight = []
-        hidd = 5
+        hidd = 4
         W = [Variable('weight_{}'.format(i)) for i in range(hidd)]
         Gamma = [Variable('gamma_{}'.format(i)) for i in range(hidd)]
         Beta = [Variable('beta_{}'.format(i)) for i in range(hidd)]
+        combination = []
+        batchnorm = []
         for i in range(hidd):
-            combine = Combine(layer[i], W[i])
-            bn = BatchNormalization(1, combine, Gamma[i], Beta[i])
-            activate = Activate(combine)
+            combine = Combine(layer[i], W[i], 'combine_{}'.format(i))
+            combination.append([combine])
+            bn = BatchNormalization(1, combine, Gamma[i], Beta[i], 'bn_{}'.format(i))
+            batchnorm.append(bn)
+            activate = Activate(bn, 'activate_{}'.format(i))
             layer.append(activate)
-        target = Input('target')
+        target = Variable('target')
         cost = MSE(layer[-1], target)
 
-        u_input = np.ones((4, 100)) * 0.1
-        s_input = np.ones((4, 100)) * 0.447
+        u_input = np.random.uniform(0., 0.1, size=(bs, neurons))
+        s_input = np.sqrt(u_input)  # cv = 1
         X_ = np.stack([u_input, s_input], axis=-1)
-        W_ = np.ones((100, 100)) * 0.5
-        gamma_ = np.array([0.5, 0.5])
-        beta_ = np.ones((100, 2)) * 2.
-        target_ = np.stack([u_input, s_input], axis=-1)
+        W_ = np.random.uniform(0., 1., size=(neurons, neurons))
+        gamma_ = np.array([1., 1.])
+        beta_ = np.stack([np.ones(neurons) * 2., np.ones(neurons) * 10.], axis=-1)
+        target_ = X_
         feed_dict = {X: X_, target: target_}
         for i in range(hidd):
             feed_dict[W[i]] = W_
             feed_dict[Gamma[i]] = gamma_
             feed_dict[Beta[i]] = beta_
         graph = topological_sort(feed_dict)
+        forward_and_backward(graph)
+        # train_ables = W + Gamma + Beta
 
-        train_ables = W + Gamma + Beta
-        # forward_and_backward(graph)
-        # loss = graph[-1].value
-        # grad_w0 = W[0].gradients[W[0]][1, 1]
-        # print('-------->', grad_w0)
-        #
-        # W__ = W_
-        # W__[1, 1] = W_[1, 1] + 0.001
-        # W[0].value = W__
-        # loss_ = forward_pass(cost, graph)
-        # grad_w0_ = (loss_ - loss) / 0.001
-        # print('\n\n------->', grad_w0_)
-
-        total_loss = []
-        for i in range(10):
-            forward_and_backward(graph)
-            sgd_update(train_ables)
-            loss = graph[-1].value
-            total_loss.append(loss)
-
-        print('\n\n====================Finish====================================')
-        plt.figure()
-        plt.plot(range(len(total_loss)), total_loss)
-        plt.show()
-
+        path = os.path.join('./fig', 'nn_property')
+        os.makedirs(path, exist_ok=True)
+        for l in range(hidd):
+            bn_out = batchnorm[l].value
+            out = layer[l].value
+            grad = W[l].gradients[W[l]].flatten()
+            fig, axes = plt.subplots(3,3, figsize=(12, 8))
+            for i in range(3):
+                for j in range(3):
+                    axes[i][j].scatter(out[3 * i + j, :, 0], out[3 * i + j, :, 1], marker='o')
+            plt.savefig(os.path.join(path, 'layer{}_distribution.png'.format(l)))
+            plt.close()
+            fig, axes = plt.subplots(3, 3, figsize=(12, 8))
+            for i in range(3):
+                for j in range(3):
+                    axes[i][j].scatter(bn_out[3 * i + j, :, 0], bn_out[3 * i + j, :, 1], marker='o')
+            plt.savefig(os.path.join(path, 'bn_layer{}_distribution.png'.format(l)))
+            plt.close()
+            fig, axes = plt.subplots(2, 2, figsize=(12, 8))
+            for i in range(2):
+                for j in range(2):
+                    axes[i][j].hist(grad, bins=20, facecolor="blue", edgecolor="black", alpha=0.7)
+            plt.savefig(os.path.join(path, 'gradient_of_weight{}.png'.format(l)))
+            plt.close()
+        grad_gamma_u = [Gamma[j].gradients[Gamma[j]][0] for j in range(4)]
+        grad_gamma_s = [Gamma[j].gradients[Gamma[j]][1] for j in range(4)]
+        print('\n --------gradient of gamma_u:\n', grad_gamma_u)
+        print('\n --------gradient of gamma_s:\n', grad_gamma_s)
+        print('\n --------gradient of 0th layer beta_u:\n', Beta[0].gradients[Beta[0]][:, 0])
+        print('\n --------gradient of 0th layer beta_s:\n', Beta[0].gradients[Beta[0]][:, 1])
 
 
 if __name__ == '__main__':

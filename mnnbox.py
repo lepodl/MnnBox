@@ -270,11 +270,11 @@ class Combine(Node):
     to specify the combine_operation on the u and s of a neuron/node.
     """
 
-    def __init__(self, X, W):
+    def __init__(self, X, W, name='combine_op'):
         # The base class (Node) constructor. Weights and bias
         # are treated like inbound nodes.
         Node.__init__(self, [X, W])
-        self.name = "Combine_OP"
+        self.name = name
 
     def forward(self):
         """
@@ -441,9 +441,9 @@ class Activate(Node):
     implement the math behind the Mnn framework
     '''
 
-    def __init__(self, X):
+    def __init__(self, X, name='activate_op'):
         Node.__init__(self, [X])
-        self.name = 'activate'
+        self.name = name
 
     def forward(self):
         self.X = self.inbound_nodes[0]  # X.value.shape=(nodes, 2)
@@ -527,10 +527,10 @@ class BatchNormalization(Node):
     '''
     implement batch normalization
     '''
-    def __init__(self, train, X, gamma, beta):
+    def __init__(self, train, X, gamma, beta, name='bn_op'):
         # X.shape=(bs, neurons, 2)
         Node.__init__(self, [X, gamma, beta])
-        self.name = 'bn'
+        self.name = name
         self.train = train
         self.num = 0
         self.u_mean_all = []
@@ -540,6 +540,7 @@ class BatchNormalization(Node):
 
     def forward(self):
         self.num += 1
+        self.rou = self.inbound_nodes[0].rou
         if self.train:
             dim = self.inbound_nodes[0].value.shape[1]
             self.epsilon = np.ones(dim) * 0.0001
@@ -559,6 +560,10 @@ class BatchNormalization(Node):
             self.u_output = self.u_hat * self.gamma[0] + self.beta[:, 0]
             self.s_output = self.s_hat * self.gamma[1] + self.beta[:, 1]
             self.value = np.stack([self.u_output, self.s_output], axis=-1)
+            if True:  print("\n================>Forward pass @ ", self.name)
+            if True: print("u:{}".format(self.u_output[1, :5]))
+            if True: print("s:{}".format(self.s_output[1, :5]))
+
 
         else:
             self.u, self.s = self.inbound_nodes[0].value[:, :, 0], self.inbound_nodes[0].value[:, :, 1]
